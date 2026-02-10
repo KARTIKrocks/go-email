@@ -305,7 +305,6 @@ config := email.SMTPConfig{
 #### Custom Logger
 
 Implement the `Logger` interface to integrate any logging library (zap, logrus, zerolog, etc.).
-See [LOGGER_ADAPTERS.md](LOGGER_ADAPTERS.md) for examples.
 
 ```go
 type MyLogger struct{}
@@ -475,7 +474,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- 📧 Email: support@example.com
 - 🐛 Issues: https://github.com/KARTIKrocks/go-email/issues
 - 📖 Documentation: https://pkg.go.dev/github.com/KARTIKrocks/go-email
 
