@@ -1,0 +1,159 @@
+// Package email provides production-ready email sending capabilities for Go applications.
+//
+// This package offers a complete email solution with SMTP support, HTML and plain text
+// templates, file attachments, retry logic, rate limiting, and comprehensive error handling.
+// It is designed to be simple to use while providing the flexibility needed for production
+// applications.
+//
+// # Features
+//
+//   - SMTP sending with TLS/STARTTLS support
+//   - HTML and plain text email bodies
+//   - Go template engine integration for dynamic content
+//   - File attachment support with proper MIME encoding
+//   - Automatic retry with exponential backoff
+//   - Built-in rate limiting
+//   - Pluggable logging interface
+//   - Context support for timeouts and cancellation
+//   - Email address validation and header injection protection
+//   - Mock sender for testing
+//   - Batch sending with concurrency control
+//   - Minimal dependencies (only golang.org/x/sync and golang.org/x/time)
+//
+// # Quick Start
+//
+// Basic email sending:
+//
+//	config := email.SMTPConfig{
+//	    Host:     "smtp.gmail.com",
+//	    Port:     587,
+//	    Username: "your-email@gmail.com",
+//	    Password: "your-app-password",
+//	    From:     "your-email@gmail.com",
+//	    UseTLS:   true,
+//	}
+//
+//	sender, err := email.NewSMTPSender(config)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	mailer := email.NewMailer(sender, config.From)
+//	defer mailer.Close()
+//
+//	ctx := context.Background()
+//	err = mailer.Send(ctx,
+//	    []string{"recipient@example.com"},
+//	    "Hello!",
+//	    "This is a test email.",
+//	)
+//
+// # Using Templates
+//
+// Create and use email templates:
+//
+//	tmpl := email.NewTemplate("welcome")
+//	tmpl.SetSubject("Welcome {{.Name}}!")
+//	tmpl.SetHTMLTemplate(`
+//	    <h1>Hello {{.Name}}!</h1>
+//	    <p>Welcome to our service.</p>
+//	`)
+//
+//	mailer.RegisterTemplate("welcome", tmpl)
+//
+//	data := map[string]any{"Name": "John Doe"}
+//	err := mailer.SendTemplate(ctx, []string{"john@example.com"}, "welcome", data)
+//
+// # With Attachments
+//
+// Send emails with file attachments:
+//
+//	pdfData, _ := os.ReadFile("document.pdf")
+//
+//	email := email.NewEmail().
+//	    SetFrom("sender@example.com").
+//	    AddTo("recipient@example.com").
+//	    SetSubject("Document Attached").
+//	    SetBody("Please find the document attached.").
+//	    AddAttachment("document.pdf", "application/pdf", pdfData)
+//
+//	err := mailer.SendEmail(ctx, email)
+//
+// # Logging
+//
+// The package uses a simple Logger interface for observability.
+// By default, no logs are produced. To enable logging, provide
+// a Logger implementation in SMTPConfig:
+//
+//	import "log/slog"
+//
+//	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+//	config := email.SMTPConfig{
+//	    Host:   "smtp.gmail.com",
+//	    Logger: email.NewSlogLogger(logger),
+//	}
+//
+// The package logs at these levels:
+//   - Debug: Connection details, SMTP commands, retry attempts
+//   - Info: Email sent/received events, configuration
+//   - Warn: Retries, rate limiting, non-fatal issues
+//   - Error: Send failures, validation errors, connection errors
+//
+// # Testing
+//
+// Use MockSender for testing:
+//
+//	mock := email.NewMockSender()
+//	mailer := email.NewMailer(mock, "test@example.com")
+//
+//	err := mailer.Send(ctx, []string{"user@example.com"}, "Test", "Body")
+//
+//	// Verify
+//	if mock.GetEmailCount() != 1 {
+//	    t.Error("expected 1 email")
+//	}
+//
+// # Error Handling
+//
+// The package provides detailed errors with context:
+//
+//	err := mailer.Send(ctx, to, subject, body)
+//	if err != nil {
+//	    var emailErr *email.Error
+//	    if errors.As(err, &emailErr) {
+//	        log.Printf("Operation: %s, From: %s, To: %v, Error: %v",
+//	            emailErr.Op, emailErr.From, emailErr.To, emailErr.Err)
+//	    }
+//	}
+//
+// # Context Support
+//
+// All send operations accept context.Context for timeouts and cancellation:
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+//	defer cancel()
+//
+//	err := mailer.Send(ctx, to, subject, body)
+//	if errors.Is(err, context.DeadlineExceeded) {
+//	    log.Println("send timed out")
+//	}
+//
+// # Security
+//
+// The package includes several security features:
+//   - Email address validation using net/mail
+//   - Email header injection protection
+//   - Automatic sanitization of headers
+//   - TLS/STARTTLS support for encrypted connections
+//
+// Always use environment variables for sensitive credentials:
+//
+//	config := email.SMTPConfig{
+//	    Host:     os.Getenv("SMTP_HOST"),
+//	    Username: os.Getenv("SMTP_USERNAME"),
+//	    Password: os.Getenv("SMTP_PASSWORD"),
+//	}
+//
+// For Gmail, use App Passwords instead of your regular password.
+// Enable 2FA and generate an App Password at:
+// https://myaccount.google.com/apppasswords
+package email
