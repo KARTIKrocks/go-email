@@ -156,6 +156,9 @@
 //   - WithHooks: invokes configurable OnSend/OnSuccess/OnFailure callbacks
 //   - WithMetrics: records send metrics via the MetricsCollector interface
 //
+// For OpenTelemetry tracing, see the contrib/otelmail submodule
+// (github.com/KARTIKrocks/go-email/contrib/otelmail).
+//
 // # Testing
 //
 // Use MockSender for testing:

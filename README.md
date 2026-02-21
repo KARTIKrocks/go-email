@@ -328,6 +328,31 @@ mailer := email.NewMailerWithOptions(sender, config.From,
 
 **Custom middleware:** Implement the `Middleware` type (`func(Sender) Sender`) to add your own behavior (tracing, throttling, etc.).
 
+### OpenTelemetry Tracing
+
+Add distributed tracing to email sends with the `contrib/otelmail` submodule. It lives in a separate Go module so the core library stays dependency-free.
+
+```bash
+go get github.com/KARTIKrocks/go-email/contrib/otelmail
+```
+
+```go
+import "github.com/KARTIKrocks/go-email/contrib/otelmail"
+
+// Wrap your sender with OTel tracing
+wrapped := email.Chain(sender,
+    otelmail.WithTracing(),          // creates a span per Send
+    email.WithLogging(logger),
+)
+```
+
+Each span includes attributes: `email.from`, `email.to`, `email.subject`, `email.recipients.count`. On failure the span records the error and sets status to `Error`.
+
+Options:
+- `otelmail.WithTracerProvider(tp)` — use a custom `TracerProvider` (default: global)
+- `otelmail.WithTracerName(name)` — custom tracer name
+- `otelmail.WithSpanName(name)` — custom span name (default: `"email.send"`)
+
 ### Templates
 
 #### Creating Templates
