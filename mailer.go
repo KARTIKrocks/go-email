@@ -26,6 +26,37 @@ func NewMailer(sender Sender, from string) *Mailer {
 	}
 }
 
+// MailerOption configures a Mailer.
+type MailerOption func(*Mailer)
+
+// WithMiddleware returns a MailerOption that wraps the Mailer's Sender
+// with the given middlewares using Chain.
+func WithMiddleware(middlewares ...Middleware) MailerOption {
+	return func(m *Mailer) {
+		m.sender = Chain(m.sender, middlewares...)
+	}
+}
+
+// NewMailerWithOptions creates a new Mailer with the given options applied.
+//
+//	mailer := email.NewMailerWithOptions(sender, "from@example.com",
+//	    email.WithMiddleware(
+//	        email.WithLogging(logger),
+//	        email.WithRecovery(),
+//	    ),
+//	)
+func NewMailerWithOptions(sender Sender, from string, opts ...MailerOption) *Mailer {
+	m := &Mailer{
+		sender:    sender,
+		from:      from,
+		templates: make(map[string]*Template),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
 // RegisterTemplate registers an email template.
 // It is safe for concurrent use.
 func (m *Mailer) RegisterTemplate(name string, tmpl *Template) {
