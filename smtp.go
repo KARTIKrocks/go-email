@@ -78,6 +78,30 @@ type SMTPConfig struct {
 	// Set to 0 to disable rate limiting
 	RateLimit int
 
+	// PoolSize is the maximum number of open SMTP connections in the pool.
+	// 0 (default) disables pooling — each Send dials a fresh connection.
+	PoolSize int
+
+	// MaxIdleConns is the maximum number of idle connections kept in the pool.
+	// Default: 2. Only used when PoolSize > 0.
+	MaxIdleConns int
+
+	// PoolMaxLifetime is the maximum lifetime of a pooled connection.
+	// Connections older than this are discarded on checkout. Default: 30m.
+	PoolMaxLifetime time.Duration
+
+	// PoolMaxIdleTime is the maximum idle time before a connection is evicted.
+	// Default: 5m.
+	PoolMaxIdleTime time.Duration
+
+	// MaxMessages is the maximum number of messages sent on a single connection
+	// before it is rotated. Default: 100.
+	MaxMessages int
+
+	// PoolWaitTimeout is the maximum time to wait for a connection when the
+	// pool is exhausted. Default: 5s.
+	PoolWaitTimeout time.Duration
+
 	// Logger is the logger interface for observability
 	// If nil, logging is disabled (NoOpLogger used)
 	Logger Logger
@@ -97,6 +121,18 @@ func (c SMTPConfig) Validate() error {
 	if c.Password == "" && c.Username != "" {
 		return errors.New("smtp: username set but password is empty")
 	}
+	if c.PoolSize < 0 {
+		return errors.New("smtp: pool size must be non-negative")
+	}
+	if c.MaxIdleConns < 0 {
+		return errors.New("smtp: max idle conns must be non-negative")
+	}
+	if c.PoolSize > 0 && c.MaxIdleConns > c.PoolSize {
+		return errors.New("smtp: max idle conns cannot exceed pool size")
+	}
+	if c.MaxMessages < 0 {
+		return errors.New("smtp: max messages must be non-negative")
+	}
 	return nil
 }
 
@@ -105,6 +141,7 @@ type SMTPSender struct {
 	config  SMTPConfig
 	logger  Logger
 	limiter *rate.Limiter
+	pool    *smtpPool // nil when pooling is disabled (PoolSize=0)
 }
 
 // NewSMTPSender creates a new SMTP sender.
@@ -143,11 +180,22 @@ func NewSMTPSender(config SMTPConfig) (*SMTPSender, error) {
 		limiter = rate.NewLimiter(rate.Every(time.Second/time.Duration(config.RateLimit)), config.RateLimit)
 	}
 
-	return &SMTPSender{
+	s := &SMTPSender{
 		config:  config,
 		logger:  logger,
 		limiter: limiter,
-	}, nil
+	}
+
+	if config.PoolSize > 0 {
+		s.pool = newSMTPPool(config, logger)
+		logger.Info("connection pool enabled",
+			"pool_size", config.PoolSize,
+			"max_idle", s.pool.maxIdleCount,
+			"max_lifetime", s.pool.maxLife.String(),
+		)
+	}
+
+	return s, nil
 }
 
 // Send sends an email via SMTP with retry logic
@@ -282,6 +330,11 @@ func (s *SMTPSender) sendOnce(ctx context.Context, email *Email) error {
 	recipients = append(recipients, email.Cc...)
 	recipients = append(recipients, email.Bcc...)
 
+	// Use pooled path if pool is enabled
+	if s.pool != nil {
+		return s.sendPooled(ctx, email.From, recipients, message)
+	}
+
 	// Connect to SMTP server
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 
@@ -303,6 +356,54 @@ func (s *SMTPSender) sendOnce(ctx context.Context, email *Email) error {
 	}
 
 	return s.sendPlain(ctx, addr, auth, email.From, recipients, message)
+}
+
+// sendPooled sends an email using a pooled connection.
+func (s *SMTPSender) sendPooled(ctx context.Context, from string, recipients []string, msg []byte) error {
+	pc, err := s.pool.get(ctx)
+	if err != nil {
+		return fmt.Errorf("pool get: %w", err)
+	}
+
+	if err = s.sendOnConn(pc, from, recipients, msg); err != nil {
+		s.pool.discard(pc)
+		return err
+	}
+
+	pc.msgCount++
+	s.pool.put(pc)
+	return nil
+}
+
+// sendOnConn sends MAIL/RCPT/DATA on an existing authenticated connection.
+func (s *SMTPSender) sendOnConn(pc *pooledConn, from string, recipients []string, msg []byte) error {
+	if mailErr := pc.client.Mail(from); mailErr != nil {
+		return fmt.Errorf("set sender: %w", mailErr)
+	}
+
+	for _, recipient := range recipients {
+		if rcptErr := pc.client.Rcpt(recipient); rcptErr != nil {
+			_ = pc.client.Reset() // best-effort state cleanup
+			return fmt.Errorf("add recipient %s: %w", recipient, rcptErr)
+		}
+	}
+
+	w, err := pc.client.Data()
+	if err != nil {
+		_ = pc.client.Reset()
+		return fmt.Errorf("start data: %w", err)
+	}
+
+	if _, err = w.Write(msg); err != nil {
+		_ = w.Close()
+		return fmt.Errorf("write data: %w", err)
+	}
+
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("close data: %w", err)
+	}
+
+	return nil
 }
 
 // sendPlain sends email without TLS using a context-aware dialer
@@ -528,8 +629,12 @@ func (s *SMTPSender) buildMessage(email *Email) ([]byte, error) {
 	return []byte(buf.String()), nil
 }
 
-// Close closes the SMTP sender
+// Close closes the SMTP sender. If connection pooling is enabled, it shuts down
+// the pool and closes all idle connections.
 func (s *SMTPSender) Close() error {
+	if s.pool != nil {
+		return s.pool.close()
+	}
 	return nil
 }
 
