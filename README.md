@@ -18,6 +18,7 @@ Production-ready email package for Go with SMTP support, templating, retry logic
 - 🎯 **Builder API** - Fluent, chainable API for constructing emails
 - 🔒 **Security** - Email header injection protection, address validation
 - 🎨 **Batch Sending** - Send multiple emails concurrently with limits
+- 🔗 **Connection Pooling** - Reuse SMTP connections for high-throughput sending
 - 📊 **Context Support** - Full context.Context integration for timeouts and cancellation
 - 🚀 **Minimal Dependencies** - Only `golang.org/x/sync` and `golang.org/x/time`
 
@@ -129,18 +130,24 @@ err := mailer.SendEmail(ctx, email)
 
 ```go
 type SMTPConfig struct {
-    Host          string        // SMTP server hostname
-    Port          int           // SMTP server port (typically 587 for TLS, 465 for SSL)
-    Username      string        // SMTP username
-    Password      string        // SMTP password
-    From          string        // Default sender email
-    UseTLS        bool          // Use STARTTLS
-    Timeout       time.Duration // Connection timeout (default: 30s)
-    MaxRetries    int           // Max retry attempts (default: 3)
-    RetryDelay    time.Duration // Initial retry delay (default: 1s)
-    RetryBackoff  float64       // Backoff multiplier (default: 2.0)
-    RateLimit     int           // Max emails per second (default: 10)
-    Logger        Logger        // Optional logger interface
+    Host            string        // SMTP server hostname
+    Port            int           // SMTP server port (typically 587 for TLS, 465 for SSL)
+    Username        string        // SMTP username
+    Password        string        // SMTP password
+    From            string        // Default sender email
+    UseTLS          bool          // Use STARTTLS
+    Timeout         time.Duration // Connection timeout (default: 30s)
+    MaxRetries      int           // Max retry attempts (default: 3)
+    RetryDelay      time.Duration // Initial retry delay (default: 1s)
+    RetryBackoff    float64       // Backoff multiplier (default: 2.0)
+    RateLimit       int           // Max emails per second (default: 10)
+    PoolSize        int           // Max pooled connections (0 = disabled)
+    MaxIdleConns    int           // Max idle connections (default: 2)
+    PoolMaxLifetime time.Duration // Max connection lifetime (default: 30m)
+    PoolMaxIdleTime time.Duration // Max idle time before eviction (default: 5m)
+    MaxMessages     int           // Max messages per connection (default: 100)
+    PoolWaitTimeout time.Duration // Max wait when pool full (default: 5s)
+    Logger          Logger        // Optional logger interface
 }
 ```
 
@@ -231,6 +238,48 @@ emails := []*email.Email{
 // Send with concurrency limit of 5
 err := mailer.SendBatch(ctx, emails, 5)
 ```
+
+### Connection Pooling
+
+For high-throughput sending, enable SMTP connection pooling to reuse established connections and avoid per-email TCP + TLS + AUTH overhead:
+
+```go
+config := email.SMTPConfig{
+    Host:     "smtp.gmail.com",
+    Port:     587,
+    Username: "your-email@gmail.com",
+    Password: "your-app-password",
+    UseTLS:   true,
+    PoolSize: 5,  // Enable pooling with max 5 connections
+}
+
+sender, err := email.NewSMTPSender(config)
+if err != nil {
+    log.Fatal(err)
+}
+defer sender.Close() // Important: closes all pooled connections
+
+mailer := email.NewMailer(sender, config.From)
+
+// Send many emails — connections are reused automatically
+for _, recipient := range recipients {
+    err := mailer.Send(ctx, []string{recipient}, "Hello!", "Message body")
+    if err != nil {
+        log.Printf("send to %s failed: %v", recipient, err)
+    }
+}
+```
+
+Pool configuration options:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `PoolSize` | 0 (disabled) | Max open connections |
+| `MaxIdleConns` | 2 | Max idle connections in pool |
+| `PoolMaxLifetime` | 30m | Max connection lifetime |
+| `PoolMaxIdleTime` | 5m | Max idle time before eviction |
+| `MaxMessages` | 100 | Max messages per connection before rotation |
+| `PoolWaitTimeout` | 5s | Max wait when pool is exhausted |
 
 ### Templates
 

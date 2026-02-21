@@ -18,6 +18,7 @@
 //   - Email address validation and header injection protection
 //   - Mock sender for testing
 //   - Batch sending with concurrency control
+//   - SMTP connection pooling for high-throughput sending
 //   - Minimal dependencies (only golang.org/x/sync and golang.org/x/time)
 //
 // # Quick Start
@@ -97,6 +98,34 @@
 //   - Info: Email sent/received events, configuration
 //   - Warn: Retries, rate limiting, non-fatal issues
 //   - Error: Send failures, validation errors, connection errors
+//
+// # Connection Pooling
+//
+// For high-throughput sending, enable SMTP connection pooling to reuse
+// established connections across sends, avoiding per-email TCP + TLS + AUTH overhead:
+//
+//	config := email.SMTPConfig{
+//	    Host:     "smtp.gmail.com",
+//	    Port:     587,
+//	    Username: "your-email@gmail.com",
+//	    Password: "your-app-password",
+//	    UseTLS:   true,
+//	    PoolSize: 5, // Enable pooling with 5 max connections
+//	}
+//
+//	sender, err := email.NewSMTPSender(config)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer sender.Close() // Important: closes all pooled connections
+//
+// Pool configuration options:
+//   - PoolSize: Max open connections (0 = disabled, default)
+//   - MaxIdleConns: Max idle connections in pool (default: 2)
+//   - PoolMaxLifetime: Max connection lifetime (default: 30m)
+//   - PoolMaxIdleTime: Max idle time before eviction (default: 5m)
+//   - MaxMessages: Max messages per connection before rotation (default: 100)
+//   - PoolWaitTimeout: Max wait when pool is exhausted (default: 5s)
 //
 // # Testing
 //
