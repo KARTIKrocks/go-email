@@ -19,6 +19,7 @@ Production-ready email package for Go with SMTP support, templating, retry logic
 - 🔒 **Security** - Email header injection protection, address validation
 - 🎨 **Batch Sending** - Send multiple emails concurrently with limits
 - 🔗 **Connection Pooling** - Reuse SMTP connections for high-throughput sending
+- 🔌 **Middleware Pipeline** - Composable middleware for logging, metrics, recovery, and hooks
 - 📊 **Context Support** - Full context.Context integration for timeouts and cancellation
 - 🚀 **Minimal Dependencies** - Only `golang.org/x/sync` and `golang.org/x/time`
 
@@ -280,6 +281,52 @@ Pool configuration options:
 | `PoolMaxIdleTime` | 5m | Max idle time before eviction |
 | `MaxMessages` | 100 | Max messages per connection before rotation |
 | `PoolWaitTimeout` | 5s | Max wait when pool is exhausted |
+
+### Middleware Pipeline
+
+Add cross-cutting concerns like logging, metrics, and panic recovery using composable middleware:
+
+```go
+// Create your sender (SMTP, mock, etc.)
+sender, _ := email.NewSMTPSender(config)
+
+// Wrap with middleware using Chain
+wrapped := email.Chain(sender,
+    email.WithRecovery(),              // Catch panics
+    email.WithLogging(logger),         // Log sends
+    email.WithHooks(email.SendHooks{   // Lifecycle callbacks
+        OnSuccess: func(ctx context.Context, e *email.Email, d time.Duration) {
+            fmt.Printf("sent to %v in %s\n", e.To, d)
+        },
+    }),
+    email.WithMetrics(myCollector),    // Record metrics
+)
+
+mailer := email.NewMailer(wrapped, config.From)
+```
+
+Or use `NewMailerWithOptions` for a more compact setup:
+
+```go
+mailer := email.NewMailerWithOptions(sender, config.From,
+    email.WithMiddleware(
+        email.WithRecovery(),
+        email.WithLogging(logger),
+        email.WithMetrics(myCollector),
+    ),
+)
+```
+
+**Built-in middlewares:**
+
+| Middleware | Description |
+|-----------|-------------|
+| `WithLogging(Logger)` | Logs send start, success/failure with duration |
+| `WithRecovery()` | Catches panics, returns `ErrPanicked` error |
+| `WithHooks(SendHooks)` | `OnSend`, `OnSuccess`, `OnFailure` callbacks |
+| `WithMetrics(MetricsCollector)` | Counters + duration via pluggable interface |
+
+**Custom middleware:** Implement the `Middleware` type (`func(Sender) Sender`) to add your own behavior (tracing, throttling, etc.).
 
 ### Templates
 
