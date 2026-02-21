@@ -18,9 +18,9 @@ type simpleMetrics struct {
 	failures  atomic.Int64
 }
 
-func (m *simpleMetrics) IncSendAttempt()                     { m.attempts.Add(1) }
-func (m *simpleMetrics) IncSendSuccess()                     { m.successes.Add(1) }
-func (m *simpleMetrics) IncSendFailure()                     { m.failures.Add(1) }
+func (m *simpleMetrics) IncSendAttempt() { m.attempts.Add(1) }
+func (m *simpleMetrics) IncSendSuccess() { m.successes.Add(1) }
+func (m *simpleMetrics) IncSendFailure() { m.failures.Add(1) }
 func (m *simpleMetrics) ObserveSendDuration(d time.Duration) {
 	fmt.Printf("  [metrics] send took %s\n", d)
 }
@@ -52,9 +52,9 @@ func main() {
 
 	// Option A: Use Chain to wrap the sender directly
 	wrapped := email.Chain(mock,
-		email.WithRecovery(),    // Outermost: catch panics
-		email.WithLogging(logger), // Log all sends
-		email.WithHooks(hooks),    // Lifecycle callbacks
+		email.WithRecovery(),       // Outermost: catch panics
+		email.WithLogging(logger),  // Log all sends
+		email.WithHooks(hooks),     // Lifecycle callbacks
 		email.WithMetrics(metrics), // Record metrics
 	)
 	mailer := email.NewMailer(wrapped, "sender@example.com")
