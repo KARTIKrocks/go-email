@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-21
+
+### Added
+- **Middleware Pipeline** — composable `Middleware` type and `Chain()` helper for cross-cutting concerns
+  - `WithLogging(Logger)` — logs send attempts, success/failure with duration
+  - `WithRecovery()` — catches panics in the send chain, converts to `ErrPanicked` error
+  - `WithHooks(SendHooks)` — configurable `OnSend`, `OnSuccess`, `OnFailure` lifecycle callbacks
+  - `WithMetrics(MetricsCollector)` — structured metrics via pluggable interface
+- `MetricsCollector` interface for counters and duration histograms
+- `NoOpMetricsCollector` default implementation
+- `ErrPanicked` sentinel error for recovered panics
+- `NewMailerWithOptions()` constructor with functional options
+- `WithMiddleware()` mailer option for applying middleware at construction
+- Example: `examples/middleware/`
+
 ## [1.1.0] - 2026-02-21
 
 ### Added

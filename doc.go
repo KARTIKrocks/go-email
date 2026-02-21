@@ -19,6 +19,7 @@
 //   - Mock sender for testing
 //   - Batch sending with concurrency control
 //   - SMTP connection pooling for high-throughput sending
+//   - Composable middleware pipeline (logging, metrics, recovery, hooks)
 //   - Minimal dependencies (only golang.org/x/sync and golang.org/x/time)
 //
 // # Quick Start
@@ -126,6 +127,34 @@
 //   - PoolMaxIdleTime: Max idle time before eviction (default: 5m)
 //   - MaxMessages: Max messages per connection before rotation (default: 100)
 //   - PoolWaitTimeout: Max wait when pool is exhausted (default: 5s)
+//
+// # Middleware Pipeline
+//
+// The package supports composable middleware for cross-cutting concerns.
+// Middleware wraps the Sender interface, following the same pattern as net/http middleware:
+//
+//	wrapped := email.Chain(sender,
+//	    email.WithRecovery(),
+//	    email.WithLogging(logger),
+//	    email.WithHooks(hooks),
+//	    email.WithMetrics(collector),
+//	)
+//	mailer := email.NewMailer(wrapped, "from@example.com")
+//
+// Or use NewMailerWithOptions:
+//
+//	mailer := email.NewMailerWithOptions(sender, "from@example.com",
+//	    email.WithMiddleware(
+//	        email.WithRecovery(),
+//	        email.WithLogging(logger),
+//	    ),
+//	)
+//
+// Built-in middlewares:
+//   - WithLogging: logs send attempts and outcomes using the Logger interface
+//   - WithRecovery: catches panics and converts them to errors
+//   - WithHooks: invokes configurable OnSend/OnSuccess/OnFailure callbacks
+//   - WithMetrics: records send metrics via the MetricsCollector interface
 //
 // # Testing
 //
